@@ -78,9 +78,13 @@ if [[ -z $(pactl list short sinks | grep spotify) ]]; then
   pactl load-module module-null-sink sink_name=spotify sink_properties=device.description="Spotify"
 fi
 
+# Set up loopback for playback while recording
+if [[ -z $(pactl list short modules | grep "module-loopback.*source=spotify.monitor") ]]; then
+  LOOPBACK_MODULE=$(pactl load-module module-loopback source=spotify.monitor sink="$pasink" latency_msec=1)
+fi
+
 # Move Spotify sound output back to default at exit
-pasink=$(pactl get-default-sink)
-trap "pactl move-sink-input $spotify $pasink" EXIT
+trap "pactl move-sink-input $spotify $pasink; [[ -n \$LOOPBACK_MODULE ]] && pactl unload-module \$LOOPBACK_MODULE" EXIT
 
 # Move Spotify to its own sink so recorded output will not get corrupted
 pactl move-sink-input $spotify spotify
@@ -160,9 +164,9 @@ do
     disown
     
     if [[ "$OUTPUT_FORMAT" == "mp3" ]]; then
-      trap "pactl move-sink-input $spotify $pasink && killall ffmpeg && killall parec" EXIT
+      trap "pactl move-sink-input $spotify $pasink 2>/dev/null; [[ -n \$LOOPBACK_MODULE ]] && pactl unload-module \$LOOPBACK_MODULE 2>/dev/null; killall ffmpeg 2>/dev/null; killall parec 2>/dev/null" EXIT
     else
-      trap "pactl move-sink-input $spotify $pasink && killall oggenc && killall parec" EXIT
+      trap "pactl move-sink-input $spotify $pasink 2>/dev/null; [[ -n \$LOOPBACK_MODULE ]] && pactl unload-module \$LOOPBACK_MODULE 2>/dev/null; killall oggenc 2>/dev/null; killall parec 2>/dev/null" EXIT
     fi
   else
     variant=$(echo "$line"|cut -d= -f1)
